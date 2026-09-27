@@ -1,0 +1,24 @@
+{
+  "name": "whatsapp_ts",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "node --watch src/main.ts"
+  },
+  "dependencies": {
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.34.7"
+  },
+  "devDependencies": {
+    "@types/qrcode-terminal": "^0.12.2",
+    "nodemon": "^3.1.14",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^7.0.2"
+  }
+}

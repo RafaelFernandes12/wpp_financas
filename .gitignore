@@ -31,3 +31,8 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### whatsapp_ts ###
+whatsapp_ts/node_modules
+whatsapp_ts/.wwebjs_auth
+whatsapp_ts/.wwebjs_cache
