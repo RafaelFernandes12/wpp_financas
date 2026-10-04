@@ -1,0 +1,6 @@
+### 
+
+# @name teste
+
+GET http://localhost:8080/payment/once HTTP/1.1
+Content-Type: application/json
