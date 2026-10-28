@@ -16,7 +16,7 @@ import com.code.wpp_financas.utils.TextUtils;
 public class MessageService {
 
     private static final String NOT_REGISTERED =
-            "Você ainda não tem cadastro. Envie !novousuario para começar.";
+            "Você ainda não tem cadastro.\nEnvie !novousuario para começar.";
 
     private final UserRepository userRepository;
     private final ConversationStateRepository stateRepository;
@@ -44,7 +44,7 @@ public class MessageService {
             String command = TextUtils.normalize(body);
             if (command.equals("!cancelar")) {
                 stateRepository.delete(state.get());
-                return "Cadastro cancelado. Envie !novousuario para recomeçar.";
+                return "Cadastro cancelado.\nEnvie !novousuario para recomeçar.";
             }
             if (command.equals("!novousuario")) {
                 return onboardingService.start(phone);
