@@ -41,7 +41,7 @@ public class TransactionInputParser {
         // "cartão" só vale como última palavra
         boolean useCard = false;
         if(!words.isEmpty() && TextUtils.normalize(words.get(words.size()-1)).equals("cartao")){
-            userCard = true;
+            useCard = true;
             words.remove(words.size()-1);
         }
 
