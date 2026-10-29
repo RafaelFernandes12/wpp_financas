@@ -14,16 +14,15 @@ client.on("message", async (message) => {
   // ignora grupos e status
   if (message.from.endsWith("@g.us") || message.from === "status@broadcast") return;
 
-  // só reage a comandos
-  if (!message.body.startsWith("!")) return;
-
-  try {
+  try{
     const contact = await message.getContact();
     const reply = await sendToSpring(contact.number, message.body);
-    await client.sendMessage(message.from, reply);
-  } catch (error) {
-    console.error("Erro ao tratar mensagem:", error);
-    await client.sendMessage(message.from, "Ops, deu um erro aqui. Tente de novo em instantes.");
+    if(reply){
+      await client.sendMessage(message.from, reply);
+    }
+  } catch(error){
+    console.error("Erro ao tratar mensagem", error);
+    await client.sendMessage(message.from, "Opa, deu um erro aqui. Tente de novo jajá e seja feliz.");
   }
 });
 
