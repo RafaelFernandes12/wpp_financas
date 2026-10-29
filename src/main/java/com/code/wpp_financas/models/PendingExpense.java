@@ -25,7 +25,7 @@ public class PendingExpense {
     private String phone;
 
     @Column(nullable = false)
-    private Long accountID;
+    private Long accountId;
 
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal amount;
