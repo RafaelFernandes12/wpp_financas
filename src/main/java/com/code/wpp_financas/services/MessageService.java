@@ -122,7 +122,7 @@ public class MessageService {
             String command = TextUtils.normalize(body);
             if (command.equals("!cancelar")) {
                 stateRepository.delete(state.get());
-                return "Cadastro cancelado. Envie !novousuario para recomeçar.";
+                return "Cadastro cancelado.\nEnvie !novousuario para recomeçar.";
             }
             if (command.equals("!novousuario")) {
                 return onboardingService.start(phone);
@@ -147,7 +147,7 @@ public class MessageService {
 
         // conversa solta, sem comando
         if (!body.startsWith("!")) {
-            return userRepository.findByPhone(phone).isPresent() ? "" : "Olá! Eu sou um bot de controle de finanças. Envie !novousuario para criar seu cadastro ou !ajuda para ver o que eu faço.";
+            return userRepository.findByPhone(phone).isPresent() ? "*Só respondo comandos, envie !ajuda para ver o menu!*" : "Olá! Eu sou um bot de controle de finanças.\nEnvie !novousuario para criar seu cadastro ou !ajuda para ver o que eu faço.";
         }
 
         String[] parts = body.split("\\s+", 2);
@@ -166,7 +166,7 @@ public class MessageService {
             case "!receita" -> withUser(phone, user ->
                     transactionCommandService.register(user, TransactionType.INCOME, args));
             case "!editar" -> withUser(phone, user -> profileCommandService.edit(user, args));
-            default -> "Não conheço esse comando. Envie !ajuda para ver a lista.";
+            default -> "Não conheço esse comando.\nEnvie !ajuda para ver a lista.";
         };
     }
 
@@ -180,6 +180,6 @@ public class MessageService {
             return GENERAL_HELP;
         }
         return HELP_TOPICS.getOrDefault(
-                key, "Não encontrei ajuda para \"" + topic + "\". Envie !ajuda para ver a lista.");
+                key, "Não encontrei ajuda para \"" + topic + "\".\nEnvie !ajuda para ver a lista.");
     }
 }

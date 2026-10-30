@@ -99,7 +99,7 @@ public class TransactionCommandService {
         return "Em qual categoria foi esse gasto de " + TextUtils.formatMoney(parsed.amount())
                 + describe(parsed.description()) + "?\n"
                 + categoryService.menu()
-                + "\n\nResponda com o número ou o nome. (!cancelar para desistir)";
+                + "\n\nResponda com o número ou o nome.\n(!cancelar para desistir)";
     }
 
     // gasto esperando categoria; se passou do prazo, descarta e devolve vazio
