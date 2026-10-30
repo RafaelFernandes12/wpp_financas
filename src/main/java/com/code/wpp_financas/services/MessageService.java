@@ -18,7 +18,7 @@ import com.code.wpp_financas.utils.TextUtils;
 @Service
 public class MessageService {
 
-    private static final String NOT_REGISTERED =  "Você ainda não tem cadastro.\nEnvie !novousuario para começar.";
+    private static final String NOT_REGISTERED = "Você ainda não tem cadastro.\nEnvie !novousuario para começar.";
 
     private static final String GENERAL_HELP = """
       Olá! Eu te ajudo a controlar suas finanças.
@@ -29,13 +29,12 @@ public class MessageService {
       !receita - registrar dinheiro que entrou
       !saldo - quanto você pode gastar agora
       !reserva - saldo da sua reserva de emergência
+      !fatura - quanto você deve no cartão e quando fecha
+      !relatorio - gastos do mês por categoria
       !editar - corrigir seus dados (nome, dias da fatura, limite)
       !ajuda - esta lista
 
-      *Em breve*
-      !fatura e !relatorio
-
-      Para ver os detalhes de um comando, envie por exemplo:\n!ajuda gasto""";
+      Para ver os detalhes de um comando, envie por exemplo: !ajuda gasto""";
 
     private static final Map<String, String> HELP_TOPICS = Map.of(
             "novousuario", """
@@ -79,7 +78,26 @@ public class MessageService {
           !editar nome Maria Silva
           !editar fechamento 12 (dia em que a fatura fecha)
           !editar vencimento 19 (dia em que a fatura vence)
-          !editar limite 3000 (limite do cartão)""");
+          !editar limite 3000 (limite do cartão)""",
+            "fatura", """
+          *!fatura*
+          Mostra quanto você deve no cartão de crédito.
+
+          - Fatura aberta: o que você já gastou e ainda vai fechar, com as datas de fechamento e de vencimento.
+          - Fatura fechada: aparece até o dia do vencimento, para você lembrar de pagar.
+          - Compras feitas até o dia do fechamento entram na fatura que fecha; as de depois vão para a seguinte.
+          - Se você cadastrou um limite, mostro também o limite disponível.
+          - Errou o dia de fechamento ou de vencimento? Use !editar.""",
+            "relatorio", """
+          *!relatorio*
+          Mostra os seus gastos do mês por categoria, com a porcentagem de cada uma, o total de gastos, as receitas e o resultado do mês.
+
+          Exemplos:
+          !relatorio (mês atual)
+          !relatorio 9 (setembro deste ano)
+          !relatorio 9/2026
+
+          Os gastos no cartão entram pela data da compra.""");
 
     private final UserRepository userRepository;
     private final ConversationStateRepository stateRepository;
@@ -87,6 +105,8 @@ public class MessageService {
     private final BalanceService balanceService;
     private final TransactionCommandService transactionCommandService;
     private final ProfileCommandService profileCommandService;
+    private final InvoiceService invoiceService;
+    private final ReportService reportService;
 
     public MessageService(
             UserRepository userRepository,
@@ -94,13 +114,17 @@ public class MessageService {
             OnboardingService onboardingService,
             BalanceService balanceService,
             TransactionCommandService transactionCommandService,
-            ProfileCommandService profileCommandService) {
+            ProfileCommandService profileCommandService,
+            InvoiceService invoiceService,
+            ReportService reportService) {
         this.userRepository = userRepository;
         this.stateRepository = stateRepository;
         this.onboardingService = onboardingService;
         this.balanceService = balanceService;
         this.transactionCommandService = transactionCommandService;
         this.profileCommandService = profileCommandService;
+        this.invoiceService = invoiceService;
+        this.reportService = reportService;
     }
 
     // devolve o texto da resposta; texto vazio significa "não responder nada"
@@ -122,7 +146,7 @@ public class MessageService {
             String command = TextUtils.normalize(body);
             if (command.equals("!cancelar")) {
                 stateRepository.delete(state.get());
-                return "Cadastro cancelado.\nEnvie !novousuario para recomeçar.";
+                return "Cadastro cancelado. Envie !novousuario para recomeçar.";
             }
             if (command.equals("!novousuario")) {
                 return onboardingService.start(phone);
@@ -145,9 +169,11 @@ public class MessageService {
             transactionCommandService.discard(pending.get());
         }
 
-        // conversa solta, sem comando
+        // conversa solta, sem comando: só responde a quem ainda não tem cadastro
         if (!body.startsWith("!")) {
-            return userRepository.findByPhone(phone).isPresent() ? "*Só respondo comandos, envie !ajuda para ver o menu!*" : "Olá! Eu sou um bot de controle de finanças.\nEnvie !novousuario para criar seu cadastro ou !ajuda para ver o que eu faço.";
+            return userRepository.findByPhone(phone).isPresent()
+                    ? ""
+                    : "Olá! Eu sou um bot de controle de finanças. Envie !novousuario para criar seu cadastro ou !ajuda para ver o que eu faço.";
         }
 
         String[] parts = body.split("\\s+", 2);
@@ -166,7 +192,9 @@ public class MessageService {
             case "!receita" -> withUser(phone, user ->
                     transactionCommandService.register(user, TransactionType.INCOME, args));
             case "!editar" -> withUser(phone, user -> profileCommandService.edit(user, args));
-            default -> "Não conheço esse comando.\nEnvie !ajuda para ver a lista.";
+            case "!fatura" -> withUser(phone, invoiceService::invoice);
+            case "!relatorio" -> withUser(phone, user -> reportService.monthlyReport(user, args));
+            default -> "Não conheço esse comando. Envie !ajuda para ver a lista.";
         };
     }
 
@@ -180,6 +208,6 @@ public class MessageService {
             return GENERAL_HELP;
         }
         return HELP_TOPICS.getOrDefault(
-                key, "Não encontrei ajuda para \"" + topic + "\".\nEnvie !ajuda para ver a lista.");
+                key, "Não encontrei ajuda para \"" + topic + "\". Envie !ajuda para ver a lista.");
     }
 }
