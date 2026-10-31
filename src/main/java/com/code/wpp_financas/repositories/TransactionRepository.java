@@ -29,18 +29,17 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
             @Param("until") LocalDate until);
 
     // soma de todas as contas do usuário num período (início e fim incluídos)
-    @Query("select sum(t.amount) from Transaction t where t.user.id = :userId and t.type = :type" + "and t.date between :start and :end")
+    @Query("select sum(t.amount) from Transaction t where t.user.id = :userId and t.type = :type " + "and t.date between :start and :end")
     BigDecimal sumByUserAndTypeBetween(
             @Param("userId") Long userId,
             @Param("type") TransactionType type,
             @Param("start") LocalDate start,
-            @Param("end") LocalDate end
-    );
+            @Param("end") LocalDate end);
 
     // total por categoria, do maior para o menor; categoria nula vem com nome nulo
     @Query("select new com.code.wpp_financas.dtos.CategoryTotal(c.name, sum(t.amount)) "
             + "from Transaction t left join t.category c "
-            + "where t.user.id = :userId and t.type = :type and t.date between :stard and :end "
+            + "where t.user.id = :userId and t.type = :type and t.date between :start and :end "
             + "group by c.name order by sum(t.amount) desc")
     List<CategoryTotal> totalsByCategory(
             @Param("userId") Long userId,
