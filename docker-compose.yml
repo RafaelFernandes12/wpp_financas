@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: .
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      TZ: America/Fortaleza
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"   # só acessível da própria máquina
+
+  bot:
+    build: ./whatsapp_ts
+    restart: unless-stopped
+    hostname: wpp-bot            # hostname fixo evita o Chromium achar que a sessão é de outra máquina
+    shm_size: "1gb"
+    environment:
+      API_URL: http://backend:8080
+      WWEBJS_AUTH_PATH: /data/wwebjs_auth
+      TZ: America/Fortaleza
+    volumes:
+      - wwebjs_auth:/data        # guarda a sessão do WhatsApp (não precisa escanear o QR a cada restart)
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  wwebjs_auth:
