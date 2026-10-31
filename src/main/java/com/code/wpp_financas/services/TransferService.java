@@ -34,14 +34,19 @@ public class TransferService {
         transactionRepository.save(leg(user, to, TransactionType.INCOME, amount, description, transferId, today));
     }
 
-    // apaga o lançamento; se for uma transferência, apaga as duas pontas
+    // apaga o lançamento; transferência apaga as duas pontas, compra parcelada apaga todas as parcelas
     @Transactional
     public void delete(Transaction transaction) {
-        if (transaction.getTransferId() == null) {
-            transactionRepository.delete(transaction);
+        if (transaction.getTransferId() != null) {
+            transactionRepository.deleteAll(transactionRepository.legsOf(transaction.getTransferId()));
             return;
         }
-        transactionRepository.deleteAll(transactionRepository.legsOf(transaction.getTransferId()));
+        if (transaction.getInstallmentGroupId() != null) {
+            transactionRepository.deleteAll(
+                    transactionRepository.installmentsOf(transaction.getInstallmentGroupId()));
+            return;
+        }
+        transactionRepository.delete(transaction);
     }
 
     private Transaction leg(

@@ -54,6 +54,9 @@ public class PendingTransaction {
     @Column(nullable = false)
     private boolean useCard;
 
+    // número de parcelas; nulo significa compra à vista
+    private Integer installments;
+
     @UpdateTimestamp
     private Instant updatedAt;
 }

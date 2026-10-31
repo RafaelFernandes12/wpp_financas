@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.code.wpp_financas.dtos.CategoryTotal;
+import com.code.wpp_financas.dtos.MonthTotal;
 import com.code.wpp_financas.models.Transaction;
 import com.code.wpp_financas.models.TransactionType;
 
@@ -62,6 +63,28 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
             @Param("start") LocalDate start,
             @Param("end") LocalDate end);
 
+    // total por mês, sem as transferências (relatório anual)
+    @Query("select new com.code.wpp_financas.dtos.MonthTotal(month(t.date), sum(t.amount)) "
+            + "from Transaction t "
+            + "where t.user.id = :userId and t.type = :type and t.transferId is null "
+            + "and t.date between :start and :end "
+            + "group by month(t.date) order by month(t.date)")
+    List<MonthTotal> totalsByMonth(
+            @Param("userId") Long userId,
+            @Param("type") TransactionType type,
+            @Param("start") LocalDate start,
+            @Param("end") LocalDate end);
+
+    // quanto foi gasto numa categoria num período, sem as transferências (alerta de meta)
+    @Query("select sum(t.amount) from Transaction t where t.user.id = :userId and t.category.id = :categoryId "
+            + "and t.type = :type and t.transferId is null and t.date between :start and :end")
+    BigDecimal sumByCategoryBetween(
+            @Param("userId") Long userId,
+            @Param("categoryId") Long categoryId,
+            @Param("type") TransactionType type,
+            @Param("start") LocalDate start,
+            @Param("end") LocalDate end);
+
     // últimos lançamentos do usuário, do mais novo para o mais antigo (extrato e desfazer)
     @Query("select t from Transaction t join fetch t.account left join fetch t.category "
             + "where t.user.id = :userId order by t.id desc")
@@ -76,6 +99,11 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     @Query("select t from Transaction t join fetch t.account left join fetch t.category "
             + "where t.transferId = :transferId order by t.id")
     List<Transaction> legsOf(@Param("transferId") String transferId);
+
+    // todas as parcelas de uma compra parcelada, da primeira para a última
+    @Query("select t from Transaction t join fetch t.account left join fetch t.category "
+            + "where t.installmentGroupId = :groupId order by t.id")
+    List<Transaction> installmentsOf(@Param("groupId") String groupId);
 
     // um lançamento do usuário, já com a conta e a categoria carregadas
     @Query("select t from Transaction t join fetch t.account left join fetch t.category "

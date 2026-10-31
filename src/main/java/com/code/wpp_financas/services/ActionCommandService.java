@@ -381,15 +381,30 @@ public class ActionCommandService {
     }
 
     // o lançamento; se for transferência, as duas pontas
+    // o lançamento; transferência: as duas pontas; compra parcelada: a primeira parcela e o resumo
     private String describe(Transaction transaction) {
-        if (transaction.getTransferId() == null) {
-            return statementService.formatLine(transaction);
+        if (transaction.getTransferId() != null) {
+            StringBuilder text = new StringBuilder();
+            for (Transaction leg : transactionRepository.legsOf(transaction.getTransferId())) {
+                text.append(statementService.formatLine(leg)).append("\n");
+            }
+            return text.toString().trim();
         }
-        StringBuilder text = new StringBuilder();
-        for (Transaction leg : transactionRepository.legsOf(transaction.getTransferId())) {
-            text.append(statementService.formatLine(leg)).append("\n");
+
+        if (transaction.getInstallmentGroupId() != null) {
+            List<Transaction> installments =
+                    transactionRepository.installmentsOf(transaction.getInstallmentGroupId());
+            if (!installments.isEmpty()) {
+                BigDecimal total = installments.stream()
+                        .map(Transaction::getAmount)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                return statementService.formatLine(installments.get(0))
+                        + "\n+ mais " + (installments.size() - 1) + " parcelas (total da compra: "
+                        + TextUtils.formatMoney(total) + ")";
+            }
         }
-        return text.toString().trim();
+
+        return statementService.formatLine(transaction);
     }
 
     private String bankBalanceLines(User user, Account bank) {

@@ -63,6 +63,10 @@ public class Transaction {
     @Column(length = 36)
     private String transferId;
 
+    // nulo nas compras comuns; nas compras parceladas, todas as parcelas têm o mesmo valor
+    @Column(length = 36)
+    private String installmentGroupId;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private Instant createdAt;

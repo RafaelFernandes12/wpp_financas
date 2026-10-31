@@ -71,6 +71,21 @@ class TransferServiceTest {
     }
 
     @Test
+    void delete_deCompraParcelada_apagaTodasAsParcelas() {
+        Transaction first = new Transaction();
+        first.setInstallmentGroupId("grupo");
+        Transaction second = new Transaction();
+        second.setInstallmentGroupId("grupo");
+        Transaction third = new Transaction();
+        third.setInstallmentGroupId("grupo");
+        when(transactionRepository.installmentsOf("grupo")).thenReturn(List.of(first, second, third));
+
+        transferService.delete(third);
+
+        verify(transactionRepository).deleteAll(List.of(first, second, third));
+    }
+
+    @Test
     void delete_deLancamentoComum_apagaSoEle() {
         Transaction normal = new Transaction();
 

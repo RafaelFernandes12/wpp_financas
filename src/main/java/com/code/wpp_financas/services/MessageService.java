@@ -27,7 +27,7 @@ public class MessageService {
 
       *Comandos disponíveis*
       !novousuario - criar seu cadastro
-      !gasto - registrar um gasto
+      !gasto - registrar um gasto (à vista ou parcelado no cartão)
       !ganho - registrar dinheiro que entrou
       !saldo - quanto você pode gastar agora
       !reserva - saldo da sua reserva de emergência
@@ -37,7 +37,9 @@ public class MessageService {
       !pagarfatura - registrar o pagamento da fatura
       !extrato - seus últimos lançamentos
       !desfazer - apagar o último lançamento
-      !relatorio - gastos do mês por categoria
+      !meta - definir quanto gastar por mês em cada categoria
+      !metas - ver como estão as suas metas
+      !relatorio - gastos do mês (ou do ano) por categoria
       !contas - seus bancos, cartões e reserva
       !novobanco - cadastrar outro banco
       !novocartao - cadastrar outro cartão
@@ -72,13 +74,16 @@ public class MessageService {
           Exemplos:
           !gasto 25,90
           !gasto 120 cartão
+          !gasto 600 cartão 3x
 
           Depois de enviar, eu pergunto a categoria e mostro a lista numerada. É só responder com o número (ou o nome).
 
           - Por padrão o gasto sai de um banco e diminui o seu !saldo. Se você tem mais de um banco, eu pergunto de qual.
           - Com a palavra "cartão" no final, o gasto vai para um cartão de crédito e entra na fatura, sem mexer no !saldo. Se você tem mais de um cartão, eu pergunto qual.
+          - Parcelado: coloque 3x, 6x etc. junto com "cartão" (de 2 a 24 parcelas). Crio uma parcela por mês, cada uma na fatura certa. O !desfazer apaga a compra inteira.
           - Se quiser, escreva uma descrição depois do valor para se lembrar do gasto: !gasto 25,90 almoço
           - Quer pular a pergunta da categoria? Escreva a categoria junto, com #: !gasto 40 #transporte
+          - Se a categoria tem meta (!meta), eu aviso quando você chegar perto do limite.
           - Para desistir antes de terminar, envie !cancelar."""),
             Map.entry("ganho", """
           *!ganho*
@@ -111,18 +116,21 @@ public class MessageService {
           - Fatura aberta: o que você já gastou e ainda vai fechar, com as datas de fechamento e de vencimento.
           - Fatura fechada: aparece até o dia do vencimento, mostrando só o que falta pagar. Para registrar o pagamento, use !pagarfatura.
           - Compras feitas até o dia do fechamento entram na fatura que fecha; as de depois vão para a seguinte.
-          - Se você cadastrou um limite, mostro também o limite disponível.
+          - Se você cadastrou um limite, mostro também o limite disponível (sem contar as parcelas futuras).
           - Errou o dia de fechamento ou de vencimento? Use !editar."""),
             Map.entry("relatorio", """
           *!relatorio*
-          Mostra os seus gastos do mês por categoria, com a porcentagem de cada uma, o total de gastos, os ganhos e o resultado do mês.
+          Mostra os seus gastos por categoria, com a porcentagem de cada uma, o total de gastos, os ganhos e o resultado.
 
           Exemplos:
           !relatorio (mês atual)
           !relatorio 9 (setembro deste ano)
           !relatorio 9/2026
+          !relatorio ano (o ano atual, com o resumo mês a mês)
+          !relatorio ano 2025
 
-          Os gastos no cartão entram pela data da compra. Transferências (!guardar, !resgatar e !pagarfatura) não entram no relatório."""),
+          No relatório do mês, as categorias com meta mostram o valor da meta.
+          Os gastos no cartão entram pela data da compra (compras parceladas, pela data de cada parcela). Transferências (!guardar, !resgatar e !pagarfatura) não entram no relatório."""),
             Map.entry("contas", """
           *!contas*
           Lista os seus bancos (com o saldo de cada um), os seus cartões (com o dia de fechamento e de vencimento) e a sua reserva de emergência."""),
@@ -169,8 +177,8 @@ public class MessageService {
           Só vale para fatura já fechada, e o valor não pode passar do que falta pagar."""),
             Map.entry("desfazer", """
           *!desfazer*
-          Apaga o último lançamento (gasto, ganho ou transferência). Eu mostro o que vai ser apagado e peço sim ou não antes.
-          Nas transferências (!guardar, !resgatar e !pagarfatura), as duas pontas são desfeitas juntas."""),
+          Apaga o último lançamento (gasto, ganho, transferência ou compra parcelada). Eu mostro o que vai ser apagado e peço sim ou não antes.
+          Nas transferências (!guardar, !resgatar e !pagarfatura), as duas pontas são desfeitas juntas. Nas compras parceladas, todas as parcelas."""),
             Map.entry("extrato", """
           *!extrato*
           Lista os seus últimos lançamentos.
@@ -180,7 +188,18 @@ public class MessageService {
           !extrato 20 (até 30)
           !extrato nubank (só dessa conta; se houver banco e cartão com o mesmo nome, mostro os dois)
 
-          Cada linha mostra a data, o valor (− saiu, + entrou), a categoria e a conta."""));
+          Cada linha mostra a data, o valor (− saiu, + entrou), a categoria e a conta. Parcelas futuras aparecem com a data delas."""),
+            Map.entry("meta", """
+          *!meta*
+          Define quanto você quer gastar, no máximo, por mês em uma categoria.
+
+          Exemplos:
+          !meta alimentação 300
+          !meta alimentação 0 (remove a meta)
+          !metas (mostra quanto você já gastou de cada meta neste mês)
+
+          Depois de cada gasto nessa categoria, eu aviso quando você chegar a 80% da meta, quando bater o limite e quando passar dele.
+          A conta considera todos os seus gastos do mês (bancos e cartão), pela data da compra."""));
 
     private final UserRepository userRepository;
     private final ConversationStateRepository stateRepository;
@@ -194,6 +213,7 @@ public class MessageService {
     private final StatementService statementService;
     private final InvoiceService invoiceService;
     private final ReportService reportService;
+    private final BudgetService budgetService;
 
     public MessageService(
             UserRepository userRepository,
@@ -207,7 +227,8 @@ public class MessageService {
             ActionCommandService actionCommandService,
             StatementService statementService,
             InvoiceService invoiceService,
-            ReportService reportService) {
+            ReportService reportService,
+            BudgetService budgetService) {
         this.userRepository = userRepository;
         this.stateRepository = stateRepository;
         this.onboardingService = onboardingService;
@@ -220,6 +241,7 @@ public class MessageService {
         this.statementService = statementService;
         this.invoiceService = invoiceService;
         this.reportService = reportService;
+        this.budgetService = budgetService;
     }
 
     // devolve o texto da resposta; texto vazio significa "não responder nada"
@@ -297,9 +319,11 @@ public class MessageService {
             case "!pagarfatura" -> withUser(phone, user -> actionCommandService.payInvoice(user, args));
             case "!desfazer" -> withUser(phone, actionCommandService::undo);
             case "!extrato" -> withUser(phone, user -> statementService.statement(user, args));
+            case "!meta" -> withUser(phone, user -> budgetService.setGoal(user, args));
+            case "!metas" -> withUser(phone, budgetService::list);
             case "!editar" -> withUser(phone, user -> profileCommandService.edit(user, args));
             case "!fatura" -> withUser(phone, user -> invoiceService.invoice(user, args));
-            case "!relatorio" -> withUser(phone, user -> reportService.monthlyReport(user, args));
+            case "!relatorio" -> withUser(phone, user -> reportService.report(user, args));
             case "!contas" -> withUser(phone, accountCommandService::list);
             case "!novobanco" -> withUser(phone, user -> accountCommandService.newBank(user, args));
             case "!novocartao" -> withUser(phone, user -> accountCommandService.newCard(user, args));
@@ -318,6 +342,9 @@ public class MessageService {
         }
         if (key.equals("receita")) {
             key = "ganho";
+        }
+        if (key.equals("metas")) {
+            key = "meta";
         }
         return HELP_TOPICS.getOrDefault(
                 key, "Não encontrei ajuda para \"" + topic + "\". Envie !ajuda para ver a lista.");

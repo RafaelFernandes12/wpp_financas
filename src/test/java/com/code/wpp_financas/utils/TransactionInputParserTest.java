@@ -18,6 +18,7 @@ class TransactionInputParserTest {
         assertNull(parsed.description());
         assertNull(parsed.categoryName());
         assertFalse(parsed.useCard());
+        assertEquals(1, parsed.installments());
     }
 
     @Test
@@ -53,6 +54,29 @@ class TransactionInputParserTest {
         var parsed = TransactionInputParser.parse("50 cartão de presente");
         assertFalse(parsed.useCard());
         assertEquals("cartão de presente", parsed.description());
+    }
+
+    @Test
+    void parcelas() {
+        var parsed = TransactionInputParser.parse("600 cartão 3x");
+        assertTrue(parsed.useCard());
+        assertEquals(3, parsed.installments());
+        assertNull(parsed.description());
+    }
+
+    @Test
+    void parcelasAntesDoCartaoEComDescricao() {
+        var parsed = TransactionInputParser.parse("600 geladeira 10X cartão");
+        assertTrue(parsed.useCard());
+        assertEquals(10, parsed.installments());
+        assertEquals("geladeira", parsed.description());
+    }
+
+    @Test
+    void umaParcelaEquivaleAAVista() {
+        var parsed = TransactionInputParser.parse("600 cartão 1x");
+        assertEquals(1, parsed.installments());
+        assertTrue(parsed.useCard());
     }
 
     @Test

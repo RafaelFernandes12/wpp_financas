@@ -238,6 +238,7 @@ public class OnboardingService {
         }
 
         stateRepository.delete(state);
+        summary.append("\nDica: defina uma meta de gasto por categoria com !meta, por exemplo: !meta alimentação 300");
         summary.append("\nEnvie !ajuda para ver os comandos.");
         return summary.toString();
     }
