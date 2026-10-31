@@ -36,3 +36,6 @@ Content-Type: application/json
 
 ### 5. Listar contas do usuário
 GET http://localhost:8080/accounts?userId=1
+
+### Disparar relatório mensal (teste)
+POST http://localhost:8080/outbox/monthly-reports/run

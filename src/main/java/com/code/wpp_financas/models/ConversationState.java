@@ -1,14 +1,22 @@
 package com.code.wpp_financas.models;
 
-import jakarta.persistence.*;
+import java.time.Instant;
+
+import org.hibernate.annotations.UpdateTimestamp;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.UpdateTimestamp;
 
-import java.math.BigDecimal;
-import java.time.Instant;
-
+// cadastro guiado em andamento: em que pergunta o telefone está
 @Entity
 @Table(name = "conversation_states")
 @Getter
@@ -27,18 +35,13 @@ public class ConversationState {
     @Column(nullable = false, length = 20)
     private OnboardingStep step;
 
-    // respostas coletadas até agora
-    private String name;
+    // o usuário é criado assim que ele informa o nome; os bancos e cartões vão sendo criados a cada resposta
+    private Long userId;
 
-    @Column(precision = 19, scale = 2)
-    private BigDecimal checkingBalance;
+    // nome do banco ou cartão que está sendo cadastrado agora
+    private String draftName;
 
-    @Column(precision = 19, scale = 2)
-    private BigDecimal emergencyFund;
-
-    private Integer closingDay;
-
-    private Integer dueDay;
+    private Integer draftClosingDay;
 
     @UpdateTimestamp
     private Instant updatedAt;

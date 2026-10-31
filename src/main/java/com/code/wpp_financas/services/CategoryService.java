@@ -1,14 +1,14 @@
 package com.code.wpp_financas.services;
 
-import com.code.wpp_financas.models.Category;
-import com.code.wpp_financas.repositories.CategoryRepository;
-import com.code.wpp_financas.utils.TextUtils;
+import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-import java.util.Optional;
+import com.code.wpp_financas.models.Category;
+import com.code.wpp_financas.repositories.CategoryRepository;
+import com.code.wpp_financas.utils.TextUtils;
 
 @Service
 public class CategoryService {
@@ -24,11 +24,15 @@ public class CategoryService {
         return categoryRepository.findAll(Sort.by("id"));
     }
 
-    // 1 - Alimentação\n2 - Transporte...
+    public Optional<Category> findById(Long id) {
+        return categoryRepository.findById(id);
+    }
+
+    // "1 - Alimentação\n2 - Transporte\n..."
     public String menu() {
         List<Category> categories = listAll();
         StringBuilder menu = new StringBuilder();
-        for(int i = 0; i < categories.size(); i++) {
+        for (int i = 0; i < categories.size(); i++) {
             menu.append(i + 1).append(" - ").append(categories.get(i).getName()).append("\n");
         }
         return menu.toString().trim();
@@ -36,18 +40,21 @@ public class CategoryService {
 
     // aceita o número da lista ("1") ou o nome ("alimentação", "#Alimentacao")
     public Optional<Category> findByInput(String input) {
-        if(input == null || input.isBlank()) {
+        if (input == null || input.isBlank()) {
             return Optional.empty();
         }
         String wanted = TextUtils.normalize(input).replace("#", "").trim();
         List<Category> categories = listAll();
 
-        if(wanted.matches("\\d{1,3}")){
+        if (wanted.matches("\\d{1,3}")) {
             int index = Integer.parseInt(wanted) - 1;
-            return index >= 0 && index < categories.size() ?
-                    Optional.of(categories.get(index)) : Optional.empty();
+            return index >= 0 && index < categories.size()
+                    ? Optional.of(categories.get(index))
+                    : Optional.empty();
         }
 
-        return categories.stream().filter(category -> TextUtils.normalize(category.getName()).equals(wanted)).findFirst();
+        return categories.stream()
+                .filter(category -> TextUtils.normalize(category.getName()).equals(wanted))
+                .findFirst();
     }
 }
