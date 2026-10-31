@@ -22,7 +22,7 @@ public class InvoiceService {
     private static final ZoneId ZONE = ZoneId.of("America/Fortaleza");
     private static final DateTimeFormatter DAY_MONTH = DateTimeFormatter.ofPattern("dd/MM");
 
-    // texto de um cartão e quanto ele tem a pagar (fatura aberta + fechada ainda não vencida)
+    // texto de um cartão e quanto ele tem a pagar (fatura aberta + fechada ainda não paga e não vencida)
     private record Summary(String text, BigDecimal toPay) {
     }
 
@@ -53,7 +53,7 @@ public class InvoiceService {
                 total = total.add(toPay);
             }
             text.append("\nTotal: ").append(TextUtils.formatMoney(total))
-                    .append("\n(faturas abertas e fechadas ainda não vencidas)");
+                    .append("\n(faturas abertas e fechadas ainda não pagas nem vencidas)");
             return text.toString();
         }
 
@@ -82,6 +82,16 @@ public class InvoiceService {
         return text.toString();
     }
 
+    // quanto ainda falta pagar da fatura fechada, já descontados os pagamentos feitos pelo bot
+    public BigDecimal closedInvoiceOwed(Account card) {
+        if (card.getClosingDay() == null || card.getDueDay() == null) {
+            return BigDecimal.ZERO;
+        }
+        BillingCycle.Statement open =
+                BillingCycle.openStatement(card.getClosingDay(), card.getDueDay(), LocalDate.now(ZONE));
+        return owed(card, BillingCycle.previousStatement(open, card.getClosingDay(), card.getDueDay()));
+    }
+
     private Summary summary(Account card, LocalDate today) {
         String title = title(card);
         if (card.getClosingDay() == null || card.getDueDay() == null) {
@@ -96,22 +106,31 @@ public class InvoiceService {
 
         BigDecimal openTotal = expenses(card, open);
         BigDecimal previousTotal = expenses(card, previous);
+        BigDecimal closedOwed = owed(card, previous);
 
         // a fatura fechada só aparece enquanto não passou do vencimento
-        boolean previousPending = previousTotal.signum() > 0 && !today.isAfter(previous.due());
+        boolean showClosed = previousTotal.signum() > 0 && !today.isAfter(previous.due());
+        boolean closedPending = showClosed && closedOwed.signum() > 0;
 
         StringBuilder reply = new StringBuilder("*" + title + "*\n");
 
-        if (previousPending) {
-            reply.append("Fatura fechada: ").append(TextUtils.formatMoney(previousTotal))
-                    .append("\nVence em ").append(previous.due().format(DAY_MONTH)).append("\n\n");
+        if (showClosed) {
+            if (closedOwed.signum() > 0) {
+                reply.append("Fatura fechada: ").append(TextUtils.formatMoney(closedOwed));
+                if (closedOwed.compareTo(previousTotal) < 0) {
+                    reply.append(" (de ").append(TextUtils.formatMoney(previousTotal)).append(", o resto já foi pago)");
+                }
+                reply.append("\nVence em ").append(previous.due().format(DAY_MONTH)).append("\n\n");
+            } else {
+                reply.append("Fatura fechada: ").append(TextUtils.formatMoney(previousTotal)).append(" (paga)\n\n");
+            }
         }
 
         reply.append("Fatura aberta: ").append(TextUtils.formatMoney(openTotal))
                 .append("\nFecha em ").append(open.closing().format(DAY_MONTH))
                 .append(" e vence em ").append(open.due().format(DAY_MONTH));
 
-        BigDecimal used = openTotal.add(previousPending ? previousTotal : BigDecimal.ZERO);
+        BigDecimal used = openTotal.add(closedPending ? closedOwed : BigDecimal.ZERO);
 
         if (card.getCreditLimit() != null) {
             reply.append("\n\nLimite disponível: ")
@@ -125,6 +144,14 @@ public class InvoiceService {
         BigDecimal sum = transactionRepository.sumByAccountAndTypeInPeriod(
                 card.getId(), TransactionType.EXPENSE, statement.previousClosing(), statement.closing());
         return sum != null ? sum : BigDecimal.ZERO;
+    }
+
+    // gastos da fatura menos os pagamentos feitos depois que ela fechou
+    private BigDecimal owed(Account card, BillingCycle.Statement statement) {
+        BigDecimal paid = transactionRepository.sumByAccountAndTypeAfter(
+                card.getId(), TransactionType.INCOME, statement.closing());
+        BigDecimal paidValue = paid != null ? paid : BigDecimal.ZERO;
+        return expenses(card, statement).subtract(paidValue).max(BigDecimal.ZERO);
     }
 
     // "Cartão Inter"; se o nome já começa com "cartão", não repete

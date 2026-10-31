@@ -49,7 +49,7 @@ class BillingCycleTest {
     @Test
     void faturaAnterior_eAQueFechouNoCicloAnterior() {
         var open = BillingCycle.openStatement(10, 17, LocalDate.of(2026, 10, 15));
-        var previous = BillingCycle.previusStatement(open, 10, 17);
+        var previous = BillingCycle.previousStatement(open, 10, 17);
         assertEquals(LocalDate.of(2026, 10, 10), previous.closing());
         assertEquals(LocalDate.of(2026, 9, 10), previous.previousClosing());
         assertEquals(LocalDate.of(2026, 10, 17), previous.due());

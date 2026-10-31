@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.code.wpp_financas.models.ConversationState;
+import com.code.wpp_financas.models.PendingAction;
 import com.code.wpp_financas.models.PendingTransaction;
 import com.code.wpp_financas.models.TransactionType;
 import com.code.wpp_financas.models.User;
@@ -30,7 +31,12 @@ public class MessageService {
       !ganho - registrar dinheiro que entrou
       !saldo - quanto você pode gastar agora
       !reserva - saldo da sua reserva de emergência
+      !guardar - mover dinheiro de um banco para a reserva
+      !resgatar - mover dinheiro da reserva para um banco
       !fatura - quanto você deve no cartão e quando fecha
+      !pagarfatura - registrar o pagamento da fatura
+      !extrato - seus últimos lançamentos
+      !desfazer - apagar o último lançamento
       !relatorio - gastos do mês por categoria
       !contas - seus bancos, cartões e reserva
       !novobanco - cadastrar outro banco
@@ -103,7 +109,7 @@ public class MessageService {
           !fatura inter (só um cartão)
 
           - Fatura aberta: o que você já gastou e ainda vai fechar, com as datas de fechamento e de vencimento.
-          - Fatura fechada: aparece até o dia do vencimento, para você lembrar de pagar.
+          - Fatura fechada: aparece até o dia do vencimento, mostrando só o que falta pagar. Para registrar o pagamento, use !pagarfatura.
           - Compras feitas até o dia do fechamento entram na fatura que fecha; as de depois vão para a seguinte.
           - Se você cadastrou um limite, mostro também o limite disponível.
           - Errou o dia de fechamento ou de vencimento? Use !editar."""),
@@ -116,7 +122,7 @@ public class MessageService {
           !relatorio 9 (setembro deste ano)
           !relatorio 9/2026
 
-          Os gastos no cartão entram pela data da compra."""),
+          Os gastos no cartão entram pela data da compra. Transferências (!guardar, !resgatar e !pagarfatura) não entram no relatório."""),
             Map.entry("contas", """
           *!contas*
           Lista os seus bancos (com o saldo de cada um), os seus cartões (com o dia de fechamento e de vencimento) e a sua reserva de emergência."""),
@@ -133,7 +139,48 @@ public class MessageService {
 
           Exemplo: !novocartao Inter 10 17
 
-          Para definir o limite depois: !editar limite 3000 inter"""));
+          Para definir o limite depois: !editar limite 3000 inter"""),
+            Map.entry("guardar", """
+          *!guardar*
+          Move dinheiro de um banco para a reserva de emergência. Formato: !guardar valor
+
+          Exemplo: !guardar 500
+
+          Se você tem mais de um banco, eu pergunto de qual sai. Isso não é um gasto: diminui o !saldo, aumenta a !reserva e não entra no !relatorio.
+          Se o saldo do banco ficar negativo, eu aviso, mas registro mesmo assim."""),
+            Map.entry("resgatar", """
+          *!resgatar*
+          Move dinheiro da reserva de emergência para um banco. Formato: !resgatar valor
+
+          Exemplo: !resgatar 200
+
+          Se você tem mais de um banco, eu pergunto em qual entra. Diminui a !reserva e aumenta o !saldo, sem entrar no !relatorio."""),
+            Map.entry("pagarfatura", """
+          *!pagarfatura*
+          Registra o pagamento da fatura fechada do cartão, tirando o dinheiro de um banco.
+
+          Exemplos:
+          !pagarfatura (paga a fatura fechada inteira)
+          !pagarfatura 300 (pagamento parcial)
+          !pagarfatura inter (escolhe o cartão)
+
+          Se você tem mais de um cartão ou mais de um banco, eu pergunto qual.
+          O pagamento diminui o !saldo do banco e o que falta na !fatura, e não entra no !relatorio (o gasto já foi contado quando você comprou no cartão).
+          Só vale para fatura já fechada, e o valor não pode passar do que falta pagar."""),
+            Map.entry("desfazer", """
+          *!desfazer*
+          Apaga o último lançamento (gasto, ganho ou transferência). Eu mostro o que vai ser apagado e peço sim ou não antes.
+          Nas transferências (!guardar, !resgatar e !pagarfatura), as duas pontas são desfeitas juntas."""),
+            Map.entry("extrato", """
+          *!extrato*
+          Lista os seus últimos lançamentos.
+
+          Exemplos:
+          !extrato (últimos 10)
+          !extrato 20 (até 30)
+          !extrato nubank (só dessa conta; se houver banco e cartão com o mesmo nome, mostro os dois)
+
+          Cada linha mostra a data, o valor (− saiu, + entrou), a categoria e a conta."""));
 
     private final UserRepository userRepository;
     private final ConversationStateRepository stateRepository;
@@ -143,6 +190,8 @@ public class MessageService {
     private final TransactionCommandService transactionCommandService;
     private final ProfileCommandService profileCommandService;
     private final AccountCommandService accountCommandService;
+    private final ActionCommandService actionCommandService;
+    private final StatementService statementService;
     private final InvoiceService invoiceService;
     private final ReportService reportService;
 
@@ -155,6 +204,8 @@ public class MessageService {
             TransactionCommandService transactionCommandService,
             ProfileCommandService profileCommandService,
             AccountCommandService accountCommandService,
+            ActionCommandService actionCommandService,
+            StatementService statementService,
             InvoiceService invoiceService,
             ReportService reportService) {
         this.userRepository = userRepository;
@@ -165,6 +216,8 @@ public class MessageService {
         this.transactionCommandService = transactionCommandService;
         this.profileCommandService = profileCommandService;
         this.accountCommandService = accountCommandService;
+        this.actionCommandService = actionCommandService;
+        this.statementService = statementService;
         this.invoiceService = invoiceService;
         this.reportService = reportService;
     }
@@ -196,19 +249,26 @@ public class MessageService {
             return onboardingService.answer(state.get(), body);
         }
 
-        // gasto ou ganho esperando categoria ou banco/cartão
-        Optional<PendingTransaction> pending = transactionCommandService.findPending(phone);
-        if (pending.isPresent()) {
+        // gasto, ganho ou ação (guardar, pagar fatura, desfazer...) esperando resposta
+        Optional<PendingTransaction> pendingTransaction = transactionCommandService.findPending(phone);
+        Optional<PendingAction> pendingAction = actionCommandService.findPending(phone);
+        if (pendingTransaction.isPresent() || pendingAction.isPresent()) {
             if (TextUtils.normalize(body).equals("!cancelar")) {
-                transactionCommandService.discard(pending.get());
-                return "Lançamento cancelado.";
+                pendingTransaction.ifPresent(transactionCommandService::discard);
+                pendingAction.ifPresent(actionCommandService::discard);
+                return "Cancelado.";
             }
             if (!body.startsWith("!")) {
+                if (pendingTransaction.isPresent()) {
+                    return withUser(phone, user ->
+                            transactionCommandService.answerPending(user, pendingTransaction.get(), body));
+                }
                 return withUser(phone, user ->
-                        transactionCommandService.answerPending(user, pending.get(), body));
+                        actionCommandService.answer(user, pendingAction.get(), body));
             }
-            // outro comando no meio: descarta o lançamento pendente e segue o fluxo normal
-            transactionCommandService.discard(pending.get());
+            // outro comando no meio: descarta o que estava pendente e segue o fluxo normal
+            pendingTransaction.ifPresent(transactionCommandService::discard);
+            pendingAction.ifPresent(actionCommandService::discard);
         }
 
         // conversa solta, sem comando: só responde a quem ainda não tem cadastro
@@ -232,6 +292,11 @@ public class MessageService {
                     transactionCommandService.register(user, TransactionType.EXPENSE, args));
             case "!ganho", "!receita" -> withUser(phone, user ->
                     transactionCommandService.register(user, TransactionType.INCOME, args));
+            case "!guardar" -> withUser(phone, user -> actionCommandService.saveToReserve(user, args));
+            case "!resgatar" -> withUser(phone, user -> actionCommandService.withdrawFromReserve(user, args));
+            case "!pagarfatura" -> withUser(phone, user -> actionCommandService.payInvoice(user, args));
+            case "!desfazer" -> withUser(phone, actionCommandService::undo);
+            case "!extrato" -> withUser(phone, user -> statementService.statement(user, args));
             case "!editar" -> withUser(phone, user -> profileCommandService.edit(user, args));
             case "!fatura" -> withUser(phone, user -> invoiceService.invoice(user, args));
             case "!relatorio" -> withUser(phone, user -> reportService.monthlyReport(user, args));
