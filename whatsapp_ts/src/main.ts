@@ -45,9 +45,6 @@ client.on("message", (msg) => {
   const raw = msg.id as { _serialized?: string; id?: string } | undefined;
   const id = raw?._serialized ?? raw?.id ?? `${msg.from}|${msg.timestamp}|${msg.body}`;
 
-  // DEBUG temporário: apague depois de confirmar que funciona
-  console.log("DEBUG id:", JSON.stringify(msg.id), "->", id);
-
   if (seen.has(id)) {
     console.log(`Ignorando mensagem duplicada: ${id}`);
     return;
