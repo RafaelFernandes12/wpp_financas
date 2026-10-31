@@ -23,7 +23,7 @@ public class BillingCycle {
     }
 
     // a fatura imediatamente anterior à fatura aberta
-    public static Statement previusStatement(Statement open, int closingDay, int dueDay){
+    public static Statement previousStatement(Statement open, int closingDay, int dueDay){
         return build(open.previousClosing(), closingDay, dueDay);
     }
 

@@ -8,7 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.code.wpp_financas.models.ConversationState;
-import com.code.wpp_financas.models.PendingExpense;
+import com.code.wpp_financas.models.PendingTransaction;
 import com.code.wpp_financas.models.TransactionType;
 import com.code.wpp_financas.models.User;
 import com.code.wpp_financas.repositories.ConversationStateRepository;
@@ -18,7 +18,8 @@ import com.code.wpp_financas.utils.TextUtils;
 @Service
 public class MessageService {
 
-    private static final String NOT_REGISTERED = "Você ainda não tem cadastro.\nEnvie !novousuario para começar.";
+    private static final String NOT_REGISTERED =
+            "Você ainda não tem cadastro. Envie !novousuario para começar.";
 
     private static final String GENERAL_HELP = """
       Olá! Eu te ajudo a controlar suas finanças.
@@ -26,29 +27,39 @@ public class MessageService {
       *Comandos disponíveis*
       !novousuario - criar seu cadastro
       !gasto - registrar um gasto
-      !receita - registrar dinheiro que entrou
+      !ganho - registrar dinheiro que entrou
       !saldo - quanto você pode gastar agora
       !reserva - saldo da sua reserva de emergência
       !fatura - quanto você deve no cartão e quando fecha
       !relatorio - gastos do mês por categoria
+      !contas - seus bancos, cartões e reserva
+      !novobanco - cadastrar outro banco
+      !novocartao - cadastrar outro cartão
       !editar - corrigir seus dados (nome, dias da fatura, limite)
       !ajuda - esta lista
 
       Para ver os detalhes de um comando, envie por exemplo: !ajuda gasto""";
 
-    private static final Map<String, String> HELP_TOPICS = Map.of(
-            "novousuario", """
+    private static final Map<String, String> HELP_TOPICS = Map.ofEntries(
+            Map.entry("novousuario", """
           *!novousuario*
-          Cria o seu cadastro. Eu pergunto o seu nome, quanto você tem hoje na conta corrente, quanto tem de reserva de emergência e se você tem cartão de crédito (com o dia em que a fatura fecha e o dia em que vence).
-          Para desistir no meio, envie !cancelar.""",
-            "saldo", """
+          Cria o seu cadastro. Eu pergunto o seu nome, o nome de cada banco que você usa e quanto tem em cada um, quanto tem de reserva de emergência e os seus cartões de crédito (com o dia em que a fatura fecha e o dia em que vence).
+          Para desistir no meio, envie !cancelar."""),
+            Map.entry("saldo", """
           *!saldo*
-          Mostra quanto você tem disponível para gastar: o saldo da conta corrente, mais as receitas, menos os gastos.
-          A reserva de emergência e os gastos no cartão não entram nessa conta.""",
-            "reserva", """
+          Mostra quanto você tem disponível para gastar: o saldo dos seus bancos, mais os ganhos, menos os gastos.
+          Se você tem mais de um banco, mostro cada um e o total.
+
+          Exemplos:
+          !saldo
+          !saldo geral (só o total)
+          !saldo nubank (só um banco)
+
+          A reserva de emergência e os gastos no cartão não entram nessa conta."""),
+            Map.entry("reserva", """
           *!reserva*
-          Mostra quanto você tem guardado na reserva de emergência. Ela fica separada do !saldo de propósito, para você não gastar sem querer o que é reserva.""",
-            "gasto", """
+          Mostra quanto você tem guardado na reserva de emergência. Ela fica separada do !saldo de propósito, para você não gastar sem querer o que é reserva."""),
+            Map.entry("gasto", """
           *!gasto*
           Registra um gasto. Formato: !gasto valor
 
@@ -58,53 +69,80 @@ public class MessageService {
 
           Depois de enviar, eu pergunto a categoria e mostro a lista numerada. É só responder com o número (ou o nome).
 
-          - Por padrão o gasto sai da conta corrente e diminui o seu !saldo.
-          - Com a palavra "cartão" no final, o gasto vai para o cartão de crédito e entra na fatura, sem mexer no !saldo.
+          - Por padrão o gasto sai de um banco e diminui o seu !saldo. Se você tem mais de um banco, eu pergunto de qual.
+          - Com a palavra "cartão" no final, o gasto vai para um cartão de crédito e entra na fatura, sem mexer no !saldo. Se você tem mais de um cartão, eu pergunto qual.
           - Se quiser, escreva uma descrição depois do valor para se lembrar do gasto: !gasto 25,90 almoço
-          - Quer pular a pergunta? Escreva a categoria junto, com #: !gasto 40 #transporte
-          - Para desistir antes de escolher a categoria, envie !cancelar.""",
-            "receita", """
-          *!receita*
-          Registra dinheiro que entrou na conta corrente. Formato: !receita valor
+          - Quer pular a pergunta da categoria? Escreva a categoria junto, com #: !gasto 40 #transporte
+          - Para desistir antes de terminar, envie !cancelar."""),
+            Map.entry("ganho", """
+          *!ganho*
+          Registra dinheiro que entrou em um banco. Formato: !ganho valor
 
-          Exemplo: !receita 1500 salário
+          Exemplo: !ganho 1500 salário
 
-          Aumenta o seu !saldo. Não vale para o cartão de crédito.""",
-            "editar", """
+          Se você tem mais de um banco, eu pergunto em qual entrou. Aumenta o seu !saldo. Não vale para cartão de crédito.
+          (!receita também funciona.)"""),
+            Map.entry("editar", """
           *!editar*
           Corrige dados do cadastro. Formato: !editar campo valor
 
           Exemplos:
           !editar nome Maria Silva
-          !editar fechamento 12 (dia em que a fatura fecha)
-          !editar vencimento 19 (dia em que a fatura vence)
-          !editar limite 3000 (limite do cartão)""",
-            "fatura", """
+          !editar fechamento 12 inter (dia em que a fatura fecha)
+          !editar vencimento 19 inter (dia em que a fatura vence)
+          !editar limite 3000 inter (limite do cartão)
+
+          O nome do cartão no final só é preciso se você tem mais de um."""),
+            Map.entry("fatura", """
           *!fatura*
-          Mostra quanto você deve no cartão de crédito.
+          Mostra quanto você deve no cartão de crédito. Se você tem mais de um cartão, mostro cada um e o total.
+
+          Exemplos:
+          !fatura
+          !fatura geral (uma linha por cartão e o total)
+          !fatura inter (só um cartão)
 
           - Fatura aberta: o que você já gastou e ainda vai fechar, com as datas de fechamento e de vencimento.
           - Fatura fechada: aparece até o dia do vencimento, para você lembrar de pagar.
           - Compras feitas até o dia do fechamento entram na fatura que fecha; as de depois vão para a seguinte.
           - Se você cadastrou um limite, mostro também o limite disponível.
-          - Errou o dia de fechamento ou de vencimento? Use !editar.""",
-            "relatorio", """
+          - Errou o dia de fechamento ou de vencimento? Use !editar."""),
+            Map.entry("relatorio", """
           *!relatorio*
-          Mostra os seus gastos do mês por categoria, com a porcentagem de cada uma, o total de gastos, as receitas e o resultado do mês.
+          Mostra os seus gastos do mês por categoria, com a porcentagem de cada uma, o total de gastos, os ganhos e o resultado do mês.
 
           Exemplos:
           !relatorio (mês atual)
           !relatorio 9 (setembro deste ano)
           !relatorio 9/2026
 
-          Os gastos no cartão entram pela data da compra.""");
+          Os gastos no cartão entram pela data da compra."""),
+            Map.entry("contas", """
+          *!contas*
+          Lista os seus bancos (com o saldo de cada um), os seus cartões (com o dia de fechamento e de vencimento) e a sua reserva de emergência."""),
+            Map.entry("novobanco", """
+          *!novobanco*
+          Cadastra outro banco. Formato: !novobanco nome saldo
+
+          Exemplo: !novobanco Nubank 1500,50
+
+          O saldo é quanto você tem nele hoje."""),
+            Map.entry("novocartao", """
+          *!novocartao*
+          Cadastra outro cartão de crédito. Formato: !novocartao nome fechamento vencimento
+
+          Exemplo: !novocartao Inter 10 17
+
+          Para definir o limite depois: !editar limite 3000 inter"""));
 
     private final UserRepository userRepository;
     private final ConversationStateRepository stateRepository;
     private final OnboardingService onboardingService;
     private final BalanceService balanceService;
+    private final BalanceCommandService balanceCommandService;
     private final TransactionCommandService transactionCommandService;
     private final ProfileCommandService profileCommandService;
+    private final AccountCommandService accountCommandService;
     private final InvoiceService invoiceService;
     private final ReportService reportService;
 
@@ -113,16 +151,20 @@ public class MessageService {
             ConversationStateRepository stateRepository,
             OnboardingService onboardingService,
             BalanceService balanceService,
+            BalanceCommandService balanceCommandService,
             TransactionCommandService transactionCommandService,
             ProfileCommandService profileCommandService,
+            AccountCommandService accountCommandService,
             InvoiceService invoiceService,
             ReportService reportService) {
         this.userRepository = userRepository;
         this.stateRepository = stateRepository;
         this.onboardingService = onboardingService;
         this.balanceService = balanceService;
+        this.balanceCommandService = balanceCommandService;
         this.transactionCommandService = transactionCommandService;
         this.profileCommandService = profileCommandService;
+        this.accountCommandService = accountCommandService;
         this.invoiceService = invoiceService;
         this.reportService = reportService;
     }
@@ -145,7 +187,7 @@ public class MessageService {
         if (state.isPresent()) {
             String command = TextUtils.normalize(body);
             if (command.equals("!cancelar")) {
-                stateRepository.delete(state.get());
+                onboardingService.cancel(state.get());
                 return "Cadastro cancelado. Envie !novousuario para recomeçar.";
             }
             if (command.equals("!novousuario")) {
@@ -154,18 +196,18 @@ public class MessageService {
             return onboardingService.answer(state.get(), body);
         }
 
-        // gasto esperando a escolha da categoria
-        Optional<PendingExpense> pending = transactionCommandService.findPending(phone);
+        // gasto ou ganho esperando categoria ou banco/cartão
+        Optional<PendingTransaction> pending = transactionCommandService.findPending(phone);
         if (pending.isPresent()) {
             if (TextUtils.normalize(body).equals("!cancelar")) {
                 transactionCommandService.discard(pending.get());
-                return "Gasto cancelado.";
+                return "Lançamento cancelado.";
             }
             if (!body.startsWith("!")) {
                 return withUser(phone, user ->
                         transactionCommandService.answerPending(user, pending.get(), body));
             }
-            // outro comando no meio: descarta o gasto pendente e segue o fluxo normal
+            // outro comando no meio: descarta o lançamento pendente e segue o fluxo normal
             transactionCommandService.discard(pending.get());
         }
 
@@ -183,17 +225,19 @@ public class MessageService {
         return switch (command) {
             case "!ajuda" -> help(args);
             case "!novousuario" -> onboardingService.start(phone);
-            case "!saldo" -> withUser(phone, user ->
-                    "Saldo disponível: " + TextUtils.formatMoney(balanceService.spendableBalance(user.getId())));
+            case "!saldo" -> withUser(phone, user -> balanceCommandService.balance(user, args));
             case "!reserva" -> withUser(phone, user ->
                     "Reserva de emergência: " + TextUtils.formatMoney(balanceService.emergencyFund(user.getId())));
             case "!gasto" -> withUser(phone, user ->
                     transactionCommandService.register(user, TransactionType.EXPENSE, args));
-            case "!receita" -> withUser(phone, user ->
+            case "!ganho", "!receita" -> withUser(phone, user ->
                     transactionCommandService.register(user, TransactionType.INCOME, args));
             case "!editar" -> withUser(phone, user -> profileCommandService.edit(user, args));
-            case "!fatura" -> withUser(phone, invoiceService::invoice);
+            case "!fatura" -> withUser(phone, user -> invoiceService.invoice(user, args));
             case "!relatorio" -> withUser(phone, user -> reportService.monthlyReport(user, args));
+            case "!contas" -> withUser(phone, accountCommandService::list);
+            case "!novobanco" -> withUser(phone, user -> accountCommandService.newBank(user, args));
+            case "!novocartao" -> withUser(phone, user -> accountCommandService.newCard(user, args));
             default -> "Não conheço esse comando. Envie !ajuda para ver a lista.";
         };
     }
@@ -206,6 +250,9 @@ public class MessageService {
         String key = TextUtils.normalize(topic).replace("!", "");
         if (key.isEmpty()) {
             return GENERAL_HELP;
+        }
+        if (key.equals("receita")) {
+            key = "ganho";
         }
         return HELP_TOPICS.getOrDefault(
                 key, "Não encontrei ajuda para \"" + topic + "\". Envie !ajuda para ver a lista.");
